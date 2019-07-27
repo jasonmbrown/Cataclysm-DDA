@@ -595,9 +595,73 @@ void vehicle::do_autodrive()
     // now we got the angle to the target, we can work out when we are heading towards disaster
     // Check the tileray in the direction we need to head towards.
     std::set<point> points_to_check = immediate_path( angle );
+    tripoint nearestpart;
     for( const auto &elem : points_to_check ) {
         const optional_vpart_position ovp = g->m.veh_at( tripoint( elem.x, elem.y, smz ) );
-        if( g->m.impassable_ter_furn( tripoint( elem.x, elem.y, smz ) ) || ( ovp &&
+        
+        if (ovp && 
+            &ovp->vehicle() != this) {
+            //Try and avoid object
+            vehicle obstacle = ovp->vehicle();
+            int relativedirection = 0;//0 right,1 down,2 left,3 up
+            //Check Relative position of Obstacle
+            
+            switch (face.dir8()) {
+            case(0): {//E
+                //What part is closest to vehicle X
+                //Determine Closest Part
+                }
+            case(1) :{//SE
+                }
+            case(2) :{//S
+                }
+            case(3) :{//SW
+                }
+            case(4) :{//W
+                }
+            case(5) :{//NW
+                }
+            case(6) :{//N
+                if (obstacle.posx > posx) { relativedirection = 0; }
+                else { relativedirection = 2; }
+                for (const auto &oelem : obstacle.get_points()) {
+                    switch (relativedirection) {
+                    case(0): {
+                        if (nearestpart.x < oelem.x) {//Left Most Part
+                            nearestpart.x = oelem.x;
+                        }}
+                    case(2): {
+                        if (nearestpart.x > oelem.x) {//Right Most Part
+                            nearestpart.x = oelem.x;
+                        }
+                    }
+                    }
+                    if (nearestpart.y < oelem.y) {//Bottom Most Part
+                        nearestpart.y = oelem.y;
+                    }
+                }
+                //Determine First Waypoint
+                tripoint wp;
+                if (relativedirection = 0) { wp.x = nearestpart.x + (mount_max.y - mount_min.y); }
+                else if (relativedirection = 2) { wp.x = nearestpart.x - mount_max.y - mount_min.y; }
+                wp.y = nearestpart.y + 2;
+                wp.z = smz;
+                omt_path.insert(omt_path.begin(), wp);
+                bool lock;
+                if (lock = 0) {
+                    lock = 1;
+                    do_autodrive();
+                }
+                else { is_autodriving = false; };
+                }
+            case(7) :{//NE
+                }
+            }
+                
+            
+        }
+
+        else if( g->m.impassable_ter_furn( tripoint( elem.x, elem.y, smz ) ) || ( ovp &&
                 &ovp->vehicle() != this ) ) {
             if( velocity > 0 ) {
                 pldrive( 0, 10 );

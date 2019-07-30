@@ -540,58 +540,146 @@ std::set<point> vehicle::immediate_path( int rotate )
     return points_to_check;
 
 }
-
-void vehicle::do_autodrive()
-{
-    if( omt_path.empty() ) {
-        is_autodriving = false;
-        return;
+bool vehicle::can_autodrive() {
+    if (omt_path.empty()) {
+        return false;
     }
+
     tripoint vehpos = global_pos3();
-    tripoint veh_omt_pos = ms_to_omt_copy( g->m.getabs( vehpos ) );
-    // we're at or close to the waypoint, pop it out and look for the next one.
-    if( veh_omt_pos == omt_path.back() ) {
-        omt_path.pop_back();
+    tripoint veh_omt_pos = ms_to_omt_copy(g->m.getabs(vehpos));
+    point omt_diff = point(omt_path.back().x - veh_omt_pos.x, omt_path.back().y - veh_omt_pos.y);
+    
+    if (omt_diff.x > 3 || omt_diff.x < -3 || omt_diff.y > 3 || omt_diff.y < -3) {
+        // we've gone walkabout somehow, call off the whole thing
+        // too far from destination OMT cancel drive
+        return false;
+    }
+    return true;
+}
+bool vehicle::is_at_autodrive_localtarget() {
+    tripoint vehpos = g->m.getabs(global_pos3());
+    //assumes facing north
+    int vehwest;
+    int veheast;
+    int vehnorth;
+    int vehsouth;
+
+    //correct vehicle rotation (Probably incorrect math)
+    direction dir = (direction) face.dir4();
+    switch (dir) {
+    case(NORTH): { 
+        vehwest = vehpos.x - mount_max.x;
+        veheast = vehpos.x - mount_min.x;
+        vehnorth = vehpos.y - mount_max.y;
+        vehsouth = vehpos.y - mount_min.y;
+        break;}
+    case(WEST): {
+        vehwest = vehpos.x - mount_max.y;
+        veheast = vehpos.x - mount_min.y; 
+        vehnorth = vehpos.y - mount_max.x;
+        vehsouth = vehpos.y - mount_min.x;
+        break;}
+    case(EAST): {
+        vehwest = vehpos.x + mount_max.y;
+        veheast = vehpos.x + mount_min.y;
+        vehnorth = vehpos.y - mount_max.x;
+        vehsouth = vehpos.y - mount_min.x; 
+        break; }
+    case(SOUTH): {        
+        vehwest = vehpos.x - mount_max.x;
+        veheast = vehpos.x - mount_min.x;
+        vehnorth = vehpos.y - mount_max.y;
+        vehsouth = vehpos.y - mount_min.y;
+        break; }
     }
 
-    point omt_diff = point( omt_path.back().x - veh_omt_pos.x, omt_path.back().y - veh_omt_pos.y );
-    if( omt_diff.x > 3 || omt_diff.x < -3 || omt_diff.y > 3 || omt_diff.y < -3 ) {
-        // we've gone walkabout somehow, call off the whole thing
+    if (vehwest > lm_path.back().x &&
+        veheast < lm_path.back().x &&
+        vehnorth < lm_path.back().y &&
+        vehsouth > lm_path.back().y) {
+        lm_path.pop_back();
+        return true;
+    }
+    return false;
+}
+void vehicle::update_lm_path() {
+    tripoint vehpos = global_pos3();
+    tripoint veh_omt_pos = ms_to_omt_copy(g->m.getabs(vehpos));
+    point omt_diff = point(omt_path.back().x - veh_omt_pos.x, omt_path.back().y - veh_omt_pos.y);
+    //Its empty so first we check to make sure we are still on the correct OMT path
+    //as we might have passed an OMT waypoint avoiding collisions
+    while (!omt_path.empty() && 
+        omt_diff.x != 0 && 
+        omt_diff.y != 0) {
+        omt_path.pop_back();
+        omt_diff = point(omt_path.back().x - veh_omt_pos.x, omt_path.back().y - veh_omt_pos.y);
+    }
+    if (!omt_path.empty()) {
+        //We cleared the OMT buffer and were not on any of the tiles, So were off track.
+        //Or we finished route
         is_autodriving = false;
         return;
     }
+
+    //add next omt_path to the lm_path
     int x_side = 0;
     int y_side = 0;
-    if( omt_diff.x > 0 ) {
+    if (omt_diff.x > 0) {
         x_side = 2 * SEEX - 1;
-    } else if( omt_diff.x < 0 ) {
+    }
+    else if (omt_diff.x < 0) {
         x_side = 0;
-    } else {
+    }
+    else {
         x_side = SEEX;
     }
-    if( omt_diff.y > 0 ) {
+    if (omt_diff.y > 0) {
         y_side = 2 * SEEY - 1;
-    } else if( omt_diff.y < 0 ) {
+    }
+    else if (omt_diff.y < 0) {
         y_side = 0;
-    } else {
+    }
+    else {
         y_side = SEEY;
     }
-    // get the shared border mid-point of the next path omt
-    tripoint global_a = tripoint( veh_omt_pos.x * ( 2 * SEEX ), veh_omt_pos.y * ( 2 * SEEY ),
-                                  veh_omt_pos.z );
-    tripoint autodrive_local_target = ( global_a + tripoint( x_side, y_side,
-                                        smz ) - g->m.getabs( vehpos ) ) + global_pos3();
+    tripoint global_a = tripoint(veh_omt_pos.x * (2 * SEEX), veh_omt_pos.y * (2 * SEEY),
+        veh_omt_pos.z);
+
+    lm_path.push_back((global_a + tripoint(x_side, y_side,
+        smz) - g->m.getabs(vehpos)) + global_pos3());
+}
+double vehicle::autodrive_angle_to_target() {
+    tripoint vehpos = global_pos3();
     rl_vec2d facevec = face_vec();
-    point rel_pos_target = point( autodrive_local_target.x - vehpos.x,
-                                  autodrive_local_target.y - vehpos.y );
-    rl_vec2d targetvec = rl_vec2d( rel_pos_target.x, rel_pos_target.y );
+    point rel_pos_target = point(lm_path.back().x - vehpos.x,
+        lm_path.back().y - vehpos.y);
+    rl_vec2d targetvec = rl_vec2d(rel_pos_target.x, rel_pos_target.y);
     // cross product
-    double crossy = ( facevec.x * targetvec.y ) - ( targetvec.x * facevec.y );
-
+    double crossy = (facevec.x * targetvec.y) - (targetvec.x * facevec.y);
     // dot product
-    double dotx = ( facevec.x * targetvec.x ) + ( facevec.y * targetvec.y );
+    double dotx = (facevec.x * targetvec.x) + (facevec.y * targetvec.y);
+    double angle = (atan2(crossy, dotx)) * 180 / M_PI;
+    return angle;
+}
+void vehicle::do_autodrive()
+{
+    if (!can_autodrive()) {
+        is_autodriving = false;
+        return;
+    }    
+    //Check Local map Path
+    if (lm_path.empty()) {
+        update_lm_path(); // Puts the next omt_path point into lm_path
+        if (!is_autodriving) { return; }//update_lm_path Set autodriving to false, which means no points are left
+    }
+        // we're at or close to the waypoint, pop it out and look for the next one.
+        if (is_at_autodrive_localtarget()) {
+            omt_path.pop_back();
+            update_lm_path();
+        }
+        double angle;
+        angle = autodrive_angle_to_target();
 
-    double angle = ( atan2( crossy, dotx ) ) * 180 / M_PI;
     // now we got the angle to the target, we can work out when we are heading towards disaster
     // Check the tileray in the direction we need to head towards.
     std::set<point> points_to_check = immediate_path( angle );
@@ -602,24 +690,33 @@ void vehicle::do_autodrive()
             if( velocity > 0 ) {
                 pldrive( 0, 10 );
             }
+            //Avoid Vehicle
+            //autodrive_local_target = avoid(vehicle)
             is_autodriving = false;
             return;
         }
     }
     int turn_x = 0;
-    if( angle > 10.0 && angle <= 45.0 ) {
+    //Minor refactor for micro optimization (immediately exits if else statements if vehicle shouldnt turn)
+    if (angle <10.0 && angle > -10.0) { turn_x = 0; }
+    else if (angle > 10.0 && angle <= 45.0) {
         turn_x = 1;
+    }
+    else if (angle < -10.0 && angle >= -45.0) {
+        turn_x = -1;
     } else if( angle > 45.0 && angle <= 90.0 ) {
         turn_x = 3;
-    } else if( angle > 90.0 && angle <= 180.0 ) {
-        turn_x = 4;
-    } else if( angle < -10.0 && angle >= -45.0 ) {
-        turn_x = -1;
-    } else if( angle < -45.0 && angle >= -90.0 ) {
+    }
+    else if (angle < -45.0 && angle >= -90.0) {
         turn_x = -3;
-    } else if( angle < -90.0 && angle >= -180.0 ) {
+    }
+    else if( angle > 90.0 && angle <= 180.0 ) {
+        turn_x = 4;
+    } 
+    else if( angle < -90.0 && angle >= -180.0 ) {
         turn_x = -4;
     }
+
     int accel_y = 0;
     // best to cruise around at a safe velocity or 40mph, whichever is lowest
     // accelerate when it dosnt need to turn.

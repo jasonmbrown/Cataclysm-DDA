@@ -758,6 +758,26 @@ class vehicle
         bool handle_potential_theft( player &p, bool check_only = false, bool prompt = true );
         // project a tileray forward to predict obstacles
         std::set<point> immediate_path( int rotate = 0 );
+        /**
+         * Returns true if automated driving is possible
+         */
+		bool can_autodrive();
+        /**
+         *  Returns true if anypart of vehicle is on the autodrive Target
+         */
+        bool is_at_autodrive_localtarget();
+        /**
+         *  Puts the next Omt_path into lm_path (OMT to Local Map)
+         */
+        void update_lm_path();
+        /**
+         *  Returns the angle in degrees to the target Waypoint
+         *  -180 (Left of Vehicle) to +180 (Right of Vehicle)
+         */
+        double autodrive_angle_to_target();
+        /**
+         *  Initiates autodrive if possible
+         */
         void do_autodrive();
         /**
          *  Operate vehicle controls
@@ -1557,6 +1577,7 @@ class vehicle
     public:
         std::vector<vehicle_part> parts;   // Parts which occupy different tiles
         std::vector<tripoint> omt_path; // route for overmap-scale auto-driving
+        std::vector<tripoint> lm_path; // Local target for auto-driving
         std::vector<int> alternators;      // List of alternator indices
         std::vector<int> engines;          // List of engine indices
         std::vector<int> reactors;         // List of reactor indices

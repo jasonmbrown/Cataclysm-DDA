@@ -1694,8 +1694,8 @@ class vehicle
         tileray move;
 
     private:
+        bool is_autodrive_avoiding_collision = false;
         bool no_refresh = false;
-
         // if true, pivot_cache needs to be recalculated
         mutable bool pivot_dirty;
         mutable bool mass_dirty = true;

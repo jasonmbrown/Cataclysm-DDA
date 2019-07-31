@@ -544,7 +544,6 @@ bool vehicle::can_autodrive() {
     if (omt_path.empty()) {
         return false;
     }
-
     tripoint vehpos = global_pos3();
     tripoint veh_omt_pos = ms_to_omt_copy(g->m.getabs(vehpos));
     point omt_diff = point(omt_path.back().x - veh_omt_pos.x, omt_path.back().y - veh_omt_pos.y);
@@ -557,7 +556,7 @@ bool vehicle::can_autodrive() {
     return true;
 }
 bool vehicle::is_at_autodrive_localtarget() {
-    tripoint vehpos = g->m.getabs(global_pos3());
+    tripoint vehpos = global_pos3();
     //assumes facing north
     int vehwest;
     int veheast;
@@ -565,38 +564,28 @@ bool vehicle::is_at_autodrive_localtarget() {
     int vehsouth;
 
     //correct vehicle rotation (Probably incorrect math)
-    direction dir = (direction) face.dir4();
+    int dir = face.dir4();
     switch (dir) {
-    case(NORTH): { 
-        vehwest = vehpos.x - mount_max.x;
-        veheast = vehpos.x - mount_min.x;
-        vehnorth = vehpos.y - mount_max.y;
-        vehsouth = vehpos.y - mount_min.y;
-        break;}
-    case(WEST): {
-        vehwest = vehpos.x - mount_max.y;
-        veheast = vehpos.x - mount_min.y; 
-        vehnorth = vehpos.y - mount_max.x;
-        vehsouth = vehpos.y - mount_min.x;
-        break;}
-    case(EAST): {
-        vehwest = vehpos.x + mount_max.y;
-        veheast = vehpos.x + mount_min.y;
-        vehnorth = vehpos.y - mount_max.x;
-        vehsouth = vehpos.y - mount_min.x; 
-        break; }
-    case(SOUTH): {        
-        vehwest = vehpos.x - mount_max.x;
-        veheast = vehpos.x - mount_min.x;
-        vehnorth = vehpos.y - mount_max.y;
-        vehsouth = vehpos.y - mount_min.y;
-        break; }
+    case(0)://east
+    case(2)://west
+        vehwest = vehpos.x + mount_min.y;//-2
+        veheast = vehpos.x + mount_max.y;//+3
+        vehnorth = vehpos.y + mount_min.x;//-4
+        vehsouth = vehpos.y + mount_max.x;//+3
+        break;
+    case(1)://south        
+    case(3)://north
+        vehwest = vehpos.x + mount_min.x;//-4
+        veheast = vehpos.x + mount_max.x;//+3
+        vehnorth = vehpos.y + mount_min.y;//-2
+        vehsouth = vehpos.y + mount_max.y;//+3
+        break;
     }
-
-    if (vehwest > lm_path.back().x &&
-        veheast < lm_path.back().x &&
-        vehnorth < lm_path.back().y &&
-        vehsouth > lm_path.back().y) {
+    //deadzone for vehicle (currently its size of vehicle)
+    if (vehwest < (lm_path.back().x) &&
+        veheast > (lm_path.back().x) &&
+        vehnorth < (lm_path.back().y) &&
+        vehsouth > (lm_path.back().y)) {
         lm_path.pop_back();
         return true;
     }
@@ -614,7 +603,7 @@ void vehicle::update_lm_path() {
         omt_path.pop_back();
         omt_diff = point(omt_path.back().x - veh_omt_pos.x, omt_path.back().y - veh_omt_pos.y);
     }
-    if (!omt_path.empty()) {
+    if (omt_path.empty()) {
         //We cleared the OMT buffer and were not on any of the tiles, So were off track.
         //Or we finished route
         is_autodriving = false;
@@ -645,6 +634,7 @@ void vehicle::update_lm_path() {
     tripoint global_a = tripoint(veh_omt_pos.x * (2 * SEEX), veh_omt_pos.y * (2 * SEEY),
         veh_omt_pos.z);
 
+    //change to relative location
     lm_path.push_back((global_a + tripoint(x_side, y_side,
         smz) - g->m.getabs(vehpos)) + global_pos3());
 }
@@ -668,10 +658,12 @@ void vehicle::do_autodrive()
         return;
     }    
     //Check Local map Path
-    if (lm_path.empty()) {
+    if (!is_autodrive_avoiding_collision) {
+        lm_path.clear();
         update_lm_path(); // Puts the next omt_path point into lm_path
         if (!is_autodriving) { return; }//update_lm_path Set autodriving to false, which means no points are left
     }
+
         // we're at or close to the waypoint, pop it out and look for the next one.
         if (is_at_autodrive_localtarget()) {
             omt_path.pop_back();
